@@ -3,12 +3,15 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Minecraft-Style Seed Map</title>
+  <title>Seed-Based Minecraft-Style Map</title>
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
-  <h1>Minecraft-Style Seed Map</h1>
+  <h1>Seed-Based Minecraft-Style Map</h1>
+  <input type="text" id="seedInput" placeholder="Enter seed..." />
+  <button id="generateBtn">Generate Map</button>
   <canvas id="mapCanvas" width="800" height="600"></canvas>
+
   <script src="https://cdn.jsdelivr.net/npm/noisejs@2.1.0/index.min.js"></script>
   <script src="script.js"></script>
 </body>
