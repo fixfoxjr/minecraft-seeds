@@ -1,16 +1,16 @@
-// Initialize Perlin noise
-const noise = new Noise(Math.random());
-
+// HTML elements
 const canvas = document.getElementById('mapCanvas');
 const ctx = canvas.getContext('2d');
+const seedInput = document.getElementById('seedInput');
+const generateBtn = document.getElementById('generateBtn');
 
 const width = canvas.width;
 const height = canvas.height;
 
 // Map settings
-const scale = 0.02; // zoom of noise
-const octaves = 4; // layers of noise
-const persistence = 0.5; // amplitude decay
+const scale = 0.02;
+const octaves = 4;
+const persistence = 0.5;
 const biomeColors = {
   ocean: '#4060ff',
   beach: '#fff5ba',
@@ -21,7 +21,23 @@ const biomeColors = {
   snow: '#ffffff'
 };
 
-// Generate height map
+// Generate numeric seed from string
+function hashSeed(seed) {
+  let hash = 0;
+  for (let i = 0; i < seed.length; i++) {
+    hash = (hash << 5) - hash + seed.charCodeAt(i);
+    hash |= 0; // convert to 32bit integer
+  }
+  return hash;
+}
+
+// Initialize Perlin noise with seed
+let noise;
+function initNoise(seed) {
+  noise = new Noise(seed);
+}
+
+// Height map
 function getHeight(x, y) {
   let value = 0;
   let amplitude = 1;
@@ -31,15 +47,15 @@ function getHeight(x, y) {
     amplitude *= persistence;
     frequency *= 2;
   }
-  return (value + 1) / 2; // normalize to 0-1
+  return (value + 1) / 2;
 }
 
-// Generate temperature map (for biome assignment)
+// Temperature map
 function getTemperature(y) {
-  return 1 - (y / height); // warmer at bottom, colder at top
+  return 1 - (y / height);
 }
 
-// Generate humidity map (simple)
+// Humidity map
 function getHumidity(x, y) {
   return (noise.perlin2(x * scale, y * scale) + 1) / 2;
 }
@@ -53,7 +69,7 @@ function getBiome(height, temp, humidity) {
   return humidity > 0.6 ? 'forest' : 'plains';
 }
 
-// Draw map
+// Draw the map
 function drawMap() {
   const image = ctx.createImageData(width, height);
   for (let y = 0; y < height; y++) {
@@ -72,15 +88,13 @@ function drawMap() {
     }
   }
 
-  // Draw rivers (follow low points)
-  for (let i = 0; i < 5; i++) {
-    drawRiver();
-  }
+  // Draw rivers
+  for (let i = 0; i < 5; i++) drawRiver();
 
   ctx.putImageData(image, 0, 0);
 }
 
-// Draw a simple river
+// Simple river generation
 function drawRiver() {
   let x = Math.floor(Math.random() * width);
   let y = 0;
@@ -90,7 +104,6 @@ function drawRiver() {
     ctx.fillStyle = '#0000ff';
     ctx.fillRect(x, y, 1, 1);
 
-    // Move to lowest neighbor
     let lowest = getHeight(x, y);
     let nx = x, ny = y + 1;
 
@@ -112,14 +125,22 @@ function drawRiver() {
   }
 }
 
-// Utility: hex to RGB
+// Hex to RGB
 function hexToRgb(hex) {
   const bigint = parseInt(hex.slice(1), 16);
-  const r = (bigint >> 16) & 255;
-  const g = (bigint >> 8) & 255;
-  const b = bigint & 255;
-  return { r, g, b };
+  return { r: (bigint >> 16) & 255, g: (bigint >> 8) & 255, b: bigint & 255 };
 }
 
-// Draw the map
-drawMap();
+// Generate map with user seed
+function generateMap() {
+  const seedStr = seedInput.value || Math.random().toString();
+  const numericSeed = hashSeed(seedStr);
+  initNoise(numericSeed);
+  drawMap();
+}
+
+// Button click
+generateBtn.addEventListener('click', generateMap);
+
+// Initial random map
+generateMap();
