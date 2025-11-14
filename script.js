@@ -1,123 +1,125 @@
-// Canvas & map setup
+// Initialize Perlin noise
+const noise = new Noise(Math.random());
+
 const canvas = document.getElementById('mapCanvas');
 const ctx = canvas.getContext('2d');
-let seedsData = [];
-let selectedSeed = null;
-let scale = 1;
-let offsetX = 0;
-let offsetY = 0;
-let isDragging = false;
-let dragStart = { x: 0, y: 0 };
 
-// Load seeds
-fetch('seeds.json')
-  .then(res => res.json())
-  .then(data => {
-    seedsData = data;
-    displaySeeds();
-  });
+const width = canvas.width;
+const height = canvas.height;
 
-function displaySeeds() {
-  const ul = document.getElementById('seeds');
-  ul.innerHTML = '';
-  seedsData.forEach(seed => {
-    const li = document.createElement('li');
-    li.textContent = `${seed.name} (Seed: ${seed.seed})`;
-    li.onclick = () => selectSeed(seed);
-    ul.appendChild(li);
-  });
+// Map settings
+const scale = 0.02; // zoom of noise
+const octaves = 4; // layers of noise
+const persistence = 0.5; // amplitude decay
+const biomeColors = {
+  ocean: '#4060ff',
+  beach: '#fff5ba',
+  plains: '#50c878',
+  forest: '#228B22',
+  desert: '#edc9af',
+  mountain: '#888888',
+  snow: '#ffffff'
+};
+
+// Generate height map
+function getHeight(x, y) {
+  let value = 0;
+  let amplitude = 1;
+  let frequency = 1;
+  for (let i = 0; i < octaves; i++) {
+    value += amplitude * noise.perlin2(x * scale * frequency, y * scale * frequency);
+    amplitude *= persistence;
+    frequency *= 2;
+  }
+  return (value + 1) / 2; // normalize to 0-1
 }
 
-function selectSeed(seed) {
-  selectedSeed = seed;
-  offsetX = 0;
-  offsetY = 0;
-  scale = 1;
-  drawMap(seed);
+// Generate temperature map (for biome assignment)
+function getTemperature(y) {
+  return 1 - (y / height); // warmer at bottom, colder at top
 }
 
-// Simple Perlin-like pseudo-random for biome generation
-function pseudoRandom(seed, x, y) {
-  return Math.abs(Math.sin(seed * 12.9898 + x * 78.233 + y * 37.719) * 43758.5453) % 1;
+// Generate humidity map (simple)
+function getHumidity(x, y) {
+  return (noise.perlin2(x * scale, y * scale) + 1) / 2;
 }
 
-// Map biomes like Chunkbase
-const biomes = [
-  { name: 'Plains', color: '#88c070' },
-  { name: 'Forest', color: '#228B22' },
-  { name: 'Desert', color: '#EDC9Af' },
-  { name: 'Taiga', color: '#A0D0A0' },
-  { name: 'Jungle', color: '#007F0E' },
-  { name: 'Savanna', color: '#C2B280' },
-  { name: 'Snowy Tundra', color: '#FFFFFF' },
-  { name: 'Swamp', color: '#556B2F' }
-];
-
-function getBiome(seed, x, y) {
-  const value = pseudoRandom(seed.seed, x, y);
-  return biomes[Math.floor(value * biomes.length)];
+// Biome assignment
+function getBiome(height, temp, humidity) {
+  if (height < 0.3) return 'ocean';
+  if (height < 0.35) return 'beach';
+  if (height > 0.8) return temp < 0.5 ? 'snow' : 'mountain';
+  if (temp > 0.7) return humidity < 0.3 ? 'desert' : 'plains';
+  return humidity > 0.6 ? 'forest' : 'plains';
 }
 
 // Draw map
-function drawMap(seed) {
-  const width = canvas.width;
-  const height = canvas.height;
-  ctx.setTransform(scale, 0, 0, scale, offsetX, offsetY);
-  ctx.clearRect(0, 0, width, height);
+function drawMap() {
+  const image = ctx.createImageData(width, height);
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const h = getHeight(x, y);
+      const t = getTemperature(y);
+      const m = getHumidity(x, y);
+      const biome = getBiome(h, t, m);
+      const color = hexToRgb(biomeColors[biome]);
 
-  const cellSize = 8;
-  for (let x = 0; x < width; x += cellSize) {
-    for (let y = 0; y < height; y += cellSize) {
-      const biome = getBiome(seed, x, y);
-      ctx.fillStyle = biome.color;
-      ctx.fillRect(x, y, cellSize, cellSize);
+      const index = (y * width + x) * 4;
+      image.data[index] = color.r;
+      image.data[index + 1] = color.g;
+      image.data[index + 2] = color.b;
+      image.data[index + 3] = 255;
     }
   }
 
-  // Draw claimed areas
-  const claimed = JSON.parse(localStorage.getItem(`claims-${seed.seed}`)) || [];
-  claimed.forEach(c => {
-    ctx.fillStyle = 'rgba(255,0,0,0.5)';
-    ctx.fillRect(c.x - 10, c.y - 10, 20, 20);
-  });
+  // Draw rivers (follow low points)
+  for (let i = 0; i < 5; i++) {
+    drawRiver();
+  }
+
+  ctx.putImageData(image, 0, 0);
 }
 
-// Click to claim
-canvas.addEventListener('click', e => {
-  if (!selectedSeed) return;
-  const rect = canvas.getBoundingClientRect();
-  const x = (e.clientX - rect.left - offsetX) / scale;
-  const y = (e.clientY - rect.top - offsetY) / scale;
-  const claimed = JSON.parse(localStorage.getItem(`claims-${selectedSeed.seed}`)) || [];
-  claimed.push({ x, y });
-  localStorage.setItem(`claims-${selectedSeed.seed}`, JSON.stringify(claimed));
+// Draw a simple river
+function drawRiver() {
+  let x = Math.floor(Math.random() * width);
+  let y = 0;
 
-  const biome = getBiome(selectedSeed, x, y).name;
-  drawMap(selectedSeed);
-  alert(`You claimed area at (${Math.floor(x)},${Math.floor(y)}) in ${biome} biome`);
-});
+  for (let i = 0; i < height; i++) {
+    const index = (y * width + x) * 4;
+    ctx.fillStyle = '#0000ff';
+    ctx.fillRect(x, y, 1, 1);
 
-// Drag & pan
-canvas.addEventListener('mousedown', e => {
-  isDragging = true;
-  dragStart.x = e.clientX - offsetX;
-  dragStart.y = e.clientY - offsetY;
-  canvas.style.cursor = 'grabbing';
-});
-canvas.addEventListener('mousemove', e => {
-  if (!isDragging) return;
-  offsetX = e.clientX - dragStart.x;
-  offsetY = e.clientY - dragStart.y;
-  drawMap(selectedSeed);
-});
-canvas.addEventListener('mouseup', () => { isDragging = false; canvas.style.cursor = 'grab'; });
-canvas.addEventListener('mouseleave', () => { isDragging = false; canvas.style.cursor = 'grab'; });
+    // Move to lowest neighbor
+    let lowest = getHeight(x, y);
+    let nx = x, ny = y + 1;
 
-// Zoom
-canvas.addEventListener('wheel', e => {
-  if (!selectedSeed) return;
-  e.preventDefault();
-  const zoom = e.deltaY < 0 ? 1.1 : 0.9;
-  scale *= zoom;
-  drawMap(selectedSeed);
-});
+    for (let dx = -1; dx <= 1; dx++) {
+      const nxTry = x + dx;
+      const nyTry = y + 1;
+      if (nxTry < 0 || nxTry >= width) continue;
+      const hTry = getHeight(nxTry, nyTry);
+      if (hTry < lowest) {
+        lowest = hTry;
+        nx = nxTry;
+        ny = nyTry;
+      }
+    }
+
+    x = nx;
+    y = ny;
+    if (y >= height - 1) break;
+  }
+}
+
+// Utility: hex to RGB
+function hexToRgb(hex) {
+  const bigint = parseInt(hex.slice(1), 16);
+  const r = (bigint >> 16) & 255;
+  const g = (bigint >> 8) & 255;
+  const b = bigint & 255;
+  return { r, g, b };
+}
+
+// Draw the map
+drawMap();
