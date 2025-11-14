@@ -1,3 +1,6 @@
+// Canvas & map setup
+const canvas = document.getElementById('mapCanvas');
+const ctx = canvas.getContext('2d');
 let seedsData = [];
 let selectedSeed = null;
 let scale = 1;
@@ -5,130 +8,116 @@ let offsetX = 0;
 let offsetY = 0;
 let isDragging = false;
 let dragStart = { x: 0, y: 0 };
-const seedsList = document.getElementById("seeds");
-const canvas = document.getElementById("mapCanvas");
-const ctx = canvas.getContext("2d");
 
-// Load seeds JSON
+// Load seeds
 fetch('seeds.json')
-    .then(response => response.json())
-    .then(data => {
-        seedsData = data;
-        displaySeeds();
-    });
+  .then(res => res.json())
+  .then(data => {
+    seedsData = data;
+    displaySeeds();
+  });
 
 function displaySeeds() {
-    seedsList.innerHTML = '';
-    seedsData.forEach(seed => {
-        const li = document.createElement('li');
-        li.textContent = `${seed.name} (Seed: ${seed.seed})`;
-        li.onclick = () => selectSeed(seed);
-        seedsList.appendChild(li);
-    });
+  const ul = document.getElementById('seeds');
+  ul.innerHTML = '';
+  seedsData.forEach(seed => {
+    const li = document.createElement('li');
+    li.textContent = `${seed.name} (Seed: ${seed.seed})`;
+    li.onclick = () => selectSeed(seed);
+    ul.appendChild(li);
+  });
 }
 
 function selectSeed(seed) {
-    selectedSeed = seed;
-    scale = 1;
-    offsetX = 0;
-    offsetY = 0;
-    drawMap(seed);
+  selectedSeed = seed;
+  offsetX = 0;
+  offsetY = 0;
+  scale = 1;
+  drawMap(seed);
 }
 
-// Simple biome function based on coordinates
+// Simple Perlin-like pseudo-random for biome generation
+function pseudoRandom(seed, x, y) {
+  return Math.abs(Math.sin(seed * 12.9898 + x * 78.233 + y * 37.719) * 43758.5453) % 1;
+}
+
+// Map biomes like Chunkbase
+const biomes = [
+  { name: 'Plains', color: '#88c070' },
+  { name: 'Forest', color: '#228B22' },
+  { name: 'Desert', color: '#EDC9Af' },
+  { name: 'Taiga', color: '#A0D0A0' },
+  { name: 'Jungle', color: '#007F0E' },
+  { name: 'Savanna', color: '#C2B280' },
+  { name: 'Snowy Tundra', color: '#FFFFFF' },
+  { name: 'Swamp', color: '#556B2F' }
+];
+
 function getBiome(seed, x, y) {
-    const value = Math.sin(seed.seed * x * 0.01 + y * 0.01) * 10000;
-    const index = Math.abs(Math.floor(value)) % biomes.length;
-    return biomes[index];
+  const value = pseudoRandom(seed.seed, x, y);
+  return biomes[Math.floor(value * biomes.length)];
 }
 
-const biomes = ["Plains", "Forest", "Desert", "Taiga", "Jungle", "Savanna", "Snowy Tundra", "Swamp"];
-
+// Draw map
 function drawMap(seed) {
-    const width = seed.mapWidth;
-    const height = seed.mapHeight;
-    canvas.width = width;
-    canvas.height = height;
+  const width = canvas.width;
+  const height = canvas.height;
+  ctx.setTransform(scale, 0, 0, scale, offsetX, offsetY);
+  ctx.clearRect(0, 0, width, height);
 
-    for (let x = 0; x < width; x += 10) {
-        for (let y = 0; y < height; y += 10) {
-            ctx.fillStyle = biomeColor(getBiome(seed, x, y));
-            ctx.fillRect(x, y, 10, 10);
-        }
+  const cellSize = 8;
+  for (let x = 0; x < width; x += cellSize) {
+    for (let y = 0; y < height; y += cellSize) {
+      const biome = getBiome(seed, x, y);
+      ctx.fillStyle = biome.color;
+      ctx.fillRect(x, y, cellSize, cellSize);
     }
+  }
 
-    // Draw claimed areas
-    const claimed = JSON.parse(localStorage.getItem(`claims-${seed.seed}`)) || [];
-    claimed.forEach(c => {
-        ctx.fillStyle = "rgba(255,0,0,0.5)";
-        ctx.fillRect(c.x - 10, c.y - 10, 20, 20);
-    });
+  // Draw claimed areas
+  const claimed = JSON.parse(localStorage.getItem(`claims-${seed.seed}`)) || [];
+  claimed.forEach(c => {
+    ctx.fillStyle = 'rgba(255,0,0,0.5)';
+    ctx.fillRect(c.x - 10, c.y - 10, 20, 20);
+  });
 }
 
-function biomeColor(biome) {
-    switch (biome) {
-        case "Plains": return "#88c070";
-        case "Forest": return "#228B22";
-        case "Desert": return "#EDC9Af";
-        case "Taiga": return "#A0D0A0";
-        case "Jungle": return "#007F0E";
-        case "Savanna": return "#C2B280";
-        case "Snowy Tundra": return "#FFFFFF";
-        case "Swamp": return "#556B2F";
-        default: return "#888";
-    }
-}
+// Click to claim
+canvas.addEventListener('click', e => {
+  if (!selectedSeed) return;
+  const rect = canvas.getBoundingClientRect();
+  const x = (e.clientX - rect.left - offsetX) / scale;
+  const y = (e.clientY - rect.top - offsetY) / scale;
+  const claimed = JSON.parse(localStorage.getItem(`claims-${selectedSeed.seed}`)) || [];
+  claimed.push({ x, y });
+  localStorage.setItem(`claims-${selectedSeed.seed}`, JSON.stringify(claimed));
 
-// Handle click to claim areas and show biome
-canvas.addEventListener("click", (e) => {
-    if (!selectedSeed) return;
-    const rect = canvas.getBoundingClientRect();
-    const x = (e.clientX - rect.left - offsetX) / scale;
-    const y = (e.clientY - rect.top - offsetY) / scale;
-    
-    const claimed = JSON.parse(localStorage.getItem(`claims-${selectedSeed.seed}`)) || [];
-    claimed.push({ x, y });
-    localStorage.setItem(`claims-${selectedSeed.seed}`, JSON.stringify(claimed));
-
-    drawMap(selectedSeed);
-
-    const biome = getBiome(selectedSeed, x, y);
-    alert(`You claimed area at (${Math.floor(x)}, ${Math.floor(y)}) in ${biome} biome`);
+  const biome = getBiome(selectedSeed, x, y).name;
+  drawMap(selectedSeed);
+  alert(`You claimed area at (${Math.floor(x)},${Math.floor(y)}) in ${biome} biome`);
 });
 
 // Drag & pan
-canvas.addEventListener("mousedown", e => {
-    isDragging = true;
-    dragStart.x = e.clientX - offsetX;
-    dragStart.y = e.clientY - offsetY;
+canvas.addEventListener('mousedown', e => {
+  isDragging = true;
+  dragStart.x = e.clientX - offsetX;
+  dragStart.y = e.clientY - offsetY;
+  canvas.style.cursor = 'grabbing';
 });
-
-canvas.addEventListener("mousemove", e => {
-    if (isDragging) {
-        offsetX = e.clientX - dragStart.x;
-        offsetY = e.clientY - dragStart.y;
-        ctx.setTransform(scale, 0, 0, scale, offsetX, offsetY);
-        drawMap(selectedSeed);
-    }
+canvas.addEventListener('mousemove', e => {
+  if (!isDragging) return;
+  offsetX = e.clientX - dragStart.x;
+  offsetY = e.clientY - dragStart.y;
+  drawMap(selectedSeed);
 });
+canvas.addEventListener('mouseup', () => { isDragging = false; canvas.style.cursor = 'grab'; });
+canvas.addEventListener('mouseleave', () => { isDragging = false; canvas.style.cursor = 'grab'; });
 
-canvas.addEventListener("mouseup", () => isDragging = false);
-canvas.addEventListener("mouseleave", () => isDragging = false);
-
-// Zoom with mouse wheel
-canvas.addEventListener("wheel", e => {
-    if (!selectedSeed) return;
-    e.preventDefault();
-    const zoom = e.deltaY < 0 ? 1.1 : 0.9;
-    scale *= zoom;
-
-    // Keep zoom centered on cursor
-    const rect = canvas.getBoundingClientRect();
-    const mx = e.clientX - rect.left;
-    const my = e.clientY - rect.top;
-    offsetX -= (mx / scale) * (zoom - 1);
-    offsetY -= (my / scale) * (zoom - 1);
-
-    ctx.setTransform(scale, 0, 0, scale, offsetX, offsetY);
-    drawMap(selectedSeed);
+// Zoom
+canvas.addEventListener('wheel', e => {
+  if (!selectedSeed) return;
+  e.preventDefault();
+  const zoom = e.deltaY < 0 ? 1.1 : 0.9;
+  scale *= zoom;
+  drawMap(selectedSeed);
 });
