@@ -1,1 +1,17 @@
+[
+  {
+    "id": 1,
+    "name": "Epic Mountain Seed",
+    "seed": "123456789",
+    "mapWidth": 500,
+    "mapHeight": 500
+  },
+  {
+    "id": 2,
+    "name": "Forest Paradise",
+    "seed": "987654321",
+    "mapWidth": 500,
+    "mapHeight": 500
+  }
+]
 
